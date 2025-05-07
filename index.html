@@ -323,36 +323,68 @@
                     yPos += 10;
 
                     // Process images
-                    for(const photo of photos) {
-                        try {
-                            const imgData = await processImage(photo);
-                            const imgProps = doc.getImageProperties(imgData);
-                            
-                            // Calculate image dimensions
-                            const maxWidth = pageWidth - 40;
-                            const scaleFactor = Math.min(maxWidth / imgProps.width, 1);
-                            const width = imgProps.width * scaleFactor;
-                            const height = imgProps.height * scaleFactor;
+                    if(photos.length > 0) {
+                        const processedImages = await Promise.all(
+                            Array.from(photos).map(async (photo) => {
+                                try {
+                                    const imgData = await processImage(photo);
+                                    const imgProps = doc.getImageProperties(imgData);
+                                    const maxWidth = (pageWidth - 50) / 2;
+                                    const scaleFactor = Math.min(maxWidth / imgProps.width, 1) * 0.5;
+                                    return {
+                                        data: imgData,
+                                        width: imgProps.width * scaleFactor,
+                                        height: imgProps.height * scaleFactor,
+                                        format: imgData.split(';')[0].split('/')[1].toUpperCase()
+                                    };
+                                } catch(error) {
+                                    console.error('Error processing image:', error);
+                                    return null;
+                                }
+                            })
+                        );
 
-                            if(yPos + height > 280) {
+                        let imgIndex = 0;
+                        while(imgIndex < processedImages.length) {
+                            const image1 = processedImages[imgIndex];
+                            const image2 = processedImages[imgIndex + 1];
+                            const rowHeight = Math.max(
+                                image1?.height || 0, 
+                                image2?.height || 0
+                            );
+
+                            // Check page space
+                            if(yPos + rowHeight > 280) {
                                 doc.addPage();
                                 yPos = 20;
                             }
 
-                            doc.addImage(
-                                imgData,
-                                imgData.split(';')[0].split('/')[1].toUpperCase(),
-                                20,
-                                yPos,
-                                width,
-                                height
-                            );
-                            
-                            yPos += height + 10;
-                        } catch(error) {
-                            console.error('Error processing image:', error);
-                            doc.text('[Failed to load image]', 20, yPos);
-                            yPos += 10;
+                            // Add images side by side
+                            if(image1) {
+                                doc.addImage(
+                                    image1.data,
+                                    image1.format,
+                                    20,
+                                    yPos,
+                                    image1.width,
+                                    image1.height
+                                );
+                            }
+
+                            if(image2) {
+                                doc.addImage(
+                                    image2.data,
+                                    image2.format,
+                                    20 + image1.width + 10,
+                                    yPos,
+                                    image2.width,
+                                    image2.height
+                                );
+                            }
+
+                            // Update positions
+                            yPos += rowHeight + 10;
+                            imgIndex += 2;
                         }
                     }
                 }
@@ -389,7 +421,6 @@
                         const canvas = document.createElement('canvas');
                         const ctx = canvas.getContext('2d');
                         
-                        // Set canvas dimensions based on orientation
                         if ([5,6,7,8].includes(orientation)) {
                             canvas.width = img.height;
                             canvas.height = img.width;
@@ -398,7 +429,6 @@
                             canvas.height = img.height;
                         }
 
-                        // Apply orientation transformations
                         ctx.save();
                         switch(orientation) {
                             case 2: ctx.transform(-1, 0, 0, 1, img.width, 0); break;
@@ -414,7 +444,6 @@
                         ctx.drawImage(img, 0, 0);
                         ctx.restore();
                         
-                        // Preserve original image format
                         const format = file.type.split('/')[1] || 'jpeg';
                         resolve(canvas.toDataURL(`image/${format}`));
                     };
