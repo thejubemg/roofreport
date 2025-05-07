@@ -265,24 +265,20 @@
                 const pageWidth = doc.internal.pageSize.getWidth();
                 let yPos = 20;
 
-                // Enhanced logo handling with fallback
+                // Handle logo
                 try {
                     const logo = await loadLogo();
-                    console.log('Logo dimensions:', logo.width, 'x', logo.height);
-                    
                     const logoWidth = 80;
                     const logoHeight = (logo.naturalHeight / logo.naturalWidth) * logoWidth;
-                    
                     doc.addImage(logo, 'PNG', (pageWidth - logoWidth)/2, yPos, logoWidth, logoHeight);
                     yPos += logoHeight + 15;
                 } catch(error) {
-                    console.error('Logo Error:', error);
                     doc.setFontSize(16);
-                    doc.text("The Jube MG Roof Inspection Report", pageWidth/2, yPos, { align: 'center' });
+                    doc.text("Roof Inspection Report", pageWidth/2, yPos, { align: 'center' });
                     yPos += 20;
                 }
 
-                // Rest of PDF content
+                // Add report details
                 doc.setFontSize(12);
                 const details = [
                     `Property: ${document.getElementById('address').value}`,
@@ -300,45 +296,151 @@
                     doc.text(line, 20, yPos);
                     yPos += 8;
                 });
+                yPos += 10;
 
-                // ... (rest of PDF generation code remains the same) ...
+                // Process observations
+                const observations = document.getElementsByClassName('observation-section');
+                for(let i = 0; i < observations.length; i++) {
+                    const observation = observations[i];
+                    const desc = observation.querySelector('.observation-desc').value;
+                    const photos = observation.querySelector('.observation-photos').files;
 
-                doc.save(`Report_${Date.now()}.pdf`);
+                    // Add observation text
+                    const splitText = doc.splitTextToSize(desc, pageWidth - 40);
+                    if(yPos + (splitText.length * 6) > 280) {
+                        doc.addPage();
+                        yPos = 20;
+                    }
+                    
+                    doc.setFont('helvetica', 'bold')
+                       .text(`Observation #${i+1}:`, 20, yPos)
+                       .setFont('helvetica', 'normal');
+                    
+                    splitText.forEach(line => {
+                        doc.text(line, 20, yPos + 6);
+                        yPos += 6;
+                    });
+                    yPos += 10;
+
+                    // Process images
+                    for(const photo of photos) {
+                        try {
+                            const imgData = await processImage(photo);
+                            const imgProps = doc.getImageProperties(imgData);
+                            
+                            // Calculate image dimensions
+                            const maxWidth = pageWidth - 40;
+                            const scaleFactor = Math.min(maxWidth / imgProps.width, 1);
+                            const width = imgProps.width * scaleFactor;
+                            const height = imgProps.height * scaleFactor;
+
+                            if(yPos + height > 280) {
+                                doc.addPage();
+                                yPos = 20;
+                            }
+
+                            doc.addImage(
+                                imgData,
+                                imgData.split(';')[0].split('/')[1].toUpperCase(),
+                                20,
+                                yPos,
+                                width,
+                                height
+                            );
+                            
+                            yPos += height + 10;
+                        } catch(error) {
+                            console.error('Error processing image:', error);
+                            doc.text('[Failed to load image]', 20, yPos);
+                            yPos += 10;
+                        }
+                    }
+                }
+
+                doc.save(`Inspection_Report_${Date.now()}.pdf`);
             } catch (error) {
-                alert(`PDF Generation Error: ${error.message}`);
+                alert(`Error generating PDF: ${error.message}`);
             }
+        }
+
+        async function processImage(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    try {
+                        const orientedImage = await correctOrientation(file, e.target.result);
+                        resolve(orientedImage);
+                    } catch(error) {
+                        reject(error);
+                    }
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function correctOrientation(file, dataURL) {
+            return new Promise((resolve) => {
+                EXIF.getData(file, function() {
+                    const orientation = EXIF.getTag(this, 'Orientation') || 1;
+                    const img = new Image();
+                    
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        
+                        // Set canvas dimensions based on orientation
+                        if ([5,6,7,8].includes(orientation)) {
+                            canvas.width = img.height;
+                            canvas.height = img.width;
+                        } else {
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+                        }
+
+                        // Apply orientation transformations
+                        ctx.save();
+                        switch(orientation) {
+                            case 2: ctx.transform(-1, 0, 0, 1, img.width, 0); break;
+                            case 3: ctx.transform(-1, 0, 0, -1, img.width, img.height); break;
+                            case 4: ctx.transform(1, 0, 0, -1, 0, img.height); break;
+                            case 5: ctx.transform(0, 1, 1, 0, 0, 0); break;
+                            case 6: ctx.transform(0, 1, -1, 0, img.height, 0); break;
+                            case 7: ctx.transform(0, -1, -1, 0, img.height, img.width); break;
+                            case 8: ctx.transform(0, -1, 1, 0, 0, img.width); break;
+                            default: break;
+                        }
+
+                        ctx.drawImage(img, 0, 0);
+                        ctx.restore();
+                        
+                        // Preserve original image format
+                        const format = file.type.split('/')[1] || 'jpeg';
+                        resolve(canvas.toDataURL(`image/${format}`));
+                    };
+                    
+                    img.src = dataURL;
+                });
+            });
         }
 
         function loadLogo() {
             return new Promise((resolve, reject) => {
                 const img = new Image();
                 img.crossOrigin = "Anonymous";
-                
-                // Add cache busting
-                const timestamp = new Date().getTime();
-                img.src = `logojube.png?${timestamp}`;
-
-                const timeout = setTimeout(() => {
-                    reject(new Error('Logo loading timed out after 5 seconds'));
-                }, 5000);
+                img.src = 'logojube.png?' + new Date().getTime();
 
                 img.onload = () => {
-                    clearTimeout(timeout);
-                    if(!img.complete || !img.naturalWidth) {
+                    if(img.naturalWidth > 0 && img.naturalHeight > 0) {
+                        resolve(img);
+                    } else {
                         reject(new Error('Invalid logo image'));
-                        return;
                     }
-                    resolve(img);
                 };
 
-                img.onerror = (err) => {
-                    clearTimeout(timeout);
-                    reject(new Error(`Failed to load logo: ${err.message}`));
-                };
+                img.onerror = () => reject(new Error('Failed to load logo'));
             });
         }
-
-        // ... (keep the readFile function unchanged) ...
     </script>
 </body>
 </html>
