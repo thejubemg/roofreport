@@ -332,7 +332,7 @@
                             const imgProps = doc.getImageProperties(imgData);
                             // Reduced image size to 40% of original with 2 images per row
                             const maxWidth = (pageWidth - (margin * 3)) / 2;
-                            const scaleFactor = Math.min(maxWidth / imgProps.width, 1) * 0.4;
+                            const scaleFactor = Math.min(maxWidth / imgProps.width, 1) * 0.6;
                             return {
                                 data: imgData,
                                 width: imgProps.width * scaleFactor,
