@@ -260,147 +260,83 @@
         }
 
         async function generatePDF() {
-    try {
-        const doc = new jsPDF();
-        const pageWidth = doc.internal.pageSize.getWidth();
-        const margin = 15; // Added margin variable
-        let yPos = 20;
+            try {
+                const doc = new jsPDF();
+                const pageWidth = doc.internal.pageSize.getWidth();
+                const margin = 15;
+                let yPos = 20;
 
-        // Handle logo
-        try {
-            const logo = await loadLogo();
-            const logoWidth = 80;
-            const logoHeight = (logo.naturalHeight / logo.naturalWidth) * logoWidth;
-            doc.addImage(logo, 'PNG', (pageWidth - logoWidth)/2, yPos, logoWidth, logoHeight);
-            yPos += logoHeight + 15;
-        } catch(error) {
-            doc.setFontSize(16);
-            doc.text("Roof Inspection Report", pageWidth/2, yPos, { align: 'center' });
-            yPos += 20;
-        }
+                try {
+                    const logo = await loadLogo();
+                    const logoWidth = 80;
+                    const logoHeight = (logo.naturalHeight / logo.naturalWidth) * logoWidth;
+                    doc.addImage(logo, 'PNG', (pageWidth - logoWidth)/2, yPos, logoWidth, logoHeight);
+                    yPos += logoHeight + 15;
+                } catch(error) {
+                    doc.setFontSize(16);
+                    doc.text("Roof Inspection Report", pageWidth/2, yPos, { align: 'center' });
+                    yPos += 20;
+                }
 
-        // Add report details
-        doc.setFontSize(12);
-        const details = [
-            `Property: ${document.getElementById('address').value}`,
-            `Inspector: ${document.getElementById('inspector').value}`,
-            `Date: ${document.getElementById('date').value}`,
-            `Roof Type: ${document.getElementById('roof-type').value}`,
-            `Condition: ${document.getElementById('roof-condition').value}`
-        ];
+                doc.setFontSize(12);
+                const details = [
+                    `Property: ${document.getElementById('address').value}`,
+                    `Inspector: ${document.getElementById('inspector').value}`,
+                    `Date: ${document.getElementById('date').value}`,
+                    `Roof Type: ${document.getElementById('roof-type').value}`,
+                    `Condition: ${document.getElementById('roof-condition').value}`
+                ];
 
-        details.forEach(line => {
-            if(yPos > 280) {
-                doc.addPage();
-                yPos = 20;
-            }
-            doc.text(line, margin, yPos);
-            yPos += 8;
-        });
-        yPos += 10;
-
-        // Process observations
-        const observations = document.getElementsByClassName('observation-section');
-        for(let i = 0; i < observations.length; i++) {
-            const observation = observations[i];
-            const desc = observation.querySelector('.observation-desc').value;
-            const photos = observation.querySelector('.observation-photos').files;
-
-            // Add observation text
-            const splitText = doc.splitTextToSize(desc, pageWidth - (margin * 2));
-            if(yPos + (splitText.length * 6) > 280) {
-                doc.addPage();
-                yPos = 20;
-            }
-            
-            doc.setFont('helvetica', 'bold')
-               .text(`Observation #${i+1}:`, margin, yPos)
-               .setFont('helvetica', 'normal');
-            
-            splitText.forEach(line => {
-                doc.text(line, margin, yPos + 6);
-                yPos += 6;
-            });
-            yPos += 10;
-
-            // Process images
-            if(photos.length > 0) {
-                const processedImages = await Promise.all(
-                    Array.from(photos).map(async (photo) => {
-                        try {
-                            const imgData = await processImage(photo);
-                            const imgProps = doc.getImageProperties(imgData);
-                            // Reduced image size to 40% of original with 2 images per row
-                            const maxWidth = (pageWidth - (margin * 3)) / 2;
-                            const scaleFactor = Math.min(maxWidth / imgProps.width, 1) * 0.8;
-                            return {
-                                data: imgData,
-                                width: imgProps.width * scaleFactor,
-                                height: imgProps.height * scaleFactor,
-                                format: imgData.split(';')[0].split('/')[1].toUpperCase()
-                            };
-                        } catch(error) {
-                            console.error('Error processing image:', error);
-                            return null;
-                        }
-                    })
-                );
-
-                let imgIndex = 0;
-                while(imgIndex < processedImages.length) {
-                    const image1 = processedImages[imgIndex];
-                    const image2 = processedImages[imgIndex + 1];
-                    const rowHeight = Math.max(
-                        image1?.height || 0, 
-                        image2?.height || 0
-                    ) + 5; // Added small padding between rows
-
-                    // Check page space
-                    if(yPos + rowHeight > 280) {
+                details.forEach(line => {
+                    if(yPos > 280) {
                         doc.addPage();
                         yPos = 20;
                     }
+                    doc.text(line, margin, yPos);
+                    yPos += 8;
+                });
+                yPos += 10;
 
-                    // Calculate positions for side-by-side layout
-                    const x1 = margin;
-                    const x2 = margin + (image1?.width || 0) + 10;
+                const observations = document.getElementsByClassName('observation-section');
+                for(let i = 0; i < observations.length; i++) {
+                    const observation = observations[i];
+                    const desc = observation.querySelector('.observation-desc').value;
+                    const photos = observation.querySelector('.observation-photos').files;
 
-                    // Add images side by side
-                    if(image1) {
-                        doc.addImage(
-                            image1.data,
-                            image1.format,
-                            x1,
-                            yPos,
-                            image1.width,
-                            image1.height
-                        );
+                    const splitText = doc.splitTextToSize(desc, pageWidth - (margin * 2));
+                    if(yPos + (splitText.length * 6) > 280) {
+                        doc.addPage();
+                        yPos = 20;
                     }
+                    
+                    doc.setFont('helvetica', 'bold')
+                       .text(`Observation #${i+1}:`, margin, yPos)
+                       .setFont('helvetica', 'normal');
+                    
+                    splitText.forEach(line => {
+                        doc.text(line, margin, yPos + 6);
+                        yPos += 6;
+                    });
+                    yPos += 10;
 
-                    if(image2) {
-                        doc.addImage(
-                            image2.data,
-                            image2.format,
-                            x2,
-                            yPos,
-                            image2.width,
-                            image2.height
-                        );
-                    }
-
-                    // Update vertical position
-                    yPos += rowHeight;
-                    imgIndex += 2;
-                }
-                yPos += 10; // Add spacing after image group
-            }
-        }
-
-        doc.save(`Inspection_Report_${Date.now()}.pdf`);
-    } catch (error) {
-        alert(`Error generating PDF: ${error.message}`);
-    }
-}
+                    if(photos.length > 0) {
+                        const processedImages = await Promise.all(
+                            Array.from(photos).map(async (photo) => {
+                                try {
+                                    const imgData = await processImage(photo);
+                                    const imgProps = doc.getImageProperties(imgData);
+                                    const maxWidth = (pageWidth - (margin * 3)) / 2;
+                                    const scaleFactor = Math.min(maxWidth / imgProps.width, 1) * 0.8;
+                                    return {
+                                        data: imgData,
+                                        width: imgProps.width * scaleFactor,
+                                        height: imgProps.height * scaleFactor,
+                                        format: imgData.split(';')[0].split('/')[1].toUpperCase()
+                                    };
+                                } catch(error) {
+                                    console.error('Error processing image:', error);
+                                    return null;
+                                }
                             })
                         );
 
@@ -411,20 +347,21 @@
                             const rowHeight = Math.max(
                                 image1?.height || 0, 
                                 image2?.height || 0
-                            );
+                            ) + 5;
 
-                            // Check page space
                             if(yPos + rowHeight > 280) {
                                 doc.addPage();
                                 yPos = 20;
                             }
 
-                            // Add images side by side
+                            const x1 = margin;
+                            const x2 = margin + (image1?.width || 0) + 10;
+
                             if(image1) {
                                 doc.addImage(
                                     image1.data,
                                     image1.format,
-                                    20,
+                                    x1,
                                     yPos,
                                     image1.width,
                                     image1.height
@@ -435,17 +372,17 @@
                                 doc.addImage(
                                     image2.data,
                                     image2.format,
-                                    20 + image1.width + 10,
+                                    x2,
                                     yPos,
                                     image2.width,
                                     image2.height
                                 );
                             }
 
-                            // Update positions
-                            yPos += rowHeight + 10;
+                            yPos += rowHeight;
                             imgIndex += 2;
                         }
+                        yPos += 10;
                     }
                 }
 
